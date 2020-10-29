@@ -1,0 +1,88 @@
+1.
+a)
+
+-- Highest spend
+SELECT customer_id, DENSE_RANK() OVER (ORDER BY op DESC) dr
+FROM (
+  SELECT customer_id, SUM(quantity * unit_price) AS op
+  FROM Invoices
+  GROUP BY customer_id
+) s
+
+-- Highest purchase frequency (defined as most distinct orders)
+SELECT customer_id, DENSE_RANK() OVER (ORDER BY orders DESC) dr
+FROM (
+  SELECT customer_id, count(distinct invoice_number) AS orders
+  FROM Invoices
+  GROUP BY customer_id
+) s
+
+b)
+
+-- Average number of days between customer purchases (not per customer but overall)
+SELECT AVG(days)
+FROM (
+  SELECT EXTRACT(DAY FROM LEAD(invoice_date,1) OVER (ORDER BY invoice_date) - invoice_date) as days
+  FROM (SELECT distinct customer_id, invoice_number, invoice_date
+        FROM Invoices
+        ORDER BY invoice_date ASC
+  ) s
+) a
+
+c)
+
+-- Highest sales out of all promotion types
+SELECT promotion_type, SUM(quantity * unit_price) sale_sum
+FROM Invoices a
+INNER JOIN Promotions b
+ON a.invoice_date = b.promotion_date
+GROUP BY promotion_type
+ORDER BY sale_sum DESC
+LIMIT 1
+
+d)
+
+Was not certain how to interpret question ask so below are the 2 different ways I thought it could be
+
+-- Percent of email subscribers by promotion type
+SELECT promotion_type, 
+      SUM(CASE WHEN email_subscriber = 'true' THEN 1 ELSE 0 END)
+      / (1.0*COUNT(*)) as prct_from_sub
+FROM Invoices a
+INNER JOIN Promotions b
+ON a.invoice_date = b.promotion_date
+LEFT JOIN Customers c
+ON a.customer_id = c.customer_id
+GROUP BY promotion_type
+
+-- Percent of email subscribers by unique promotion occurence
+SELECT promotion_date,
+       SUM(CASE WHEN email_subscriber = 'true' THEN 1 ELSE 0 END)
+       / (1.0*COUNT(*)) as prct_from_sub
+FROM Invoices a
+INNER JOIN Promotions b
+ON a.invoice_date = b.promotion_date
+LEFT JOIN Customers c
+ON a.customer_id = c.customer_id
+GROUP BY promotion_date
+
+e)
+
+-- Best sales for days with no promotions
+SELECT invoice_date, SUM(quantity * unit_price) sales
+FROM Invoices a
+LEFT JOIN Promotions b
+ON a.invoice_date = b.promotion_date
+WHERE b.promotion_date IS NULL
+GROUP BY invoice_date
+ORDER BY sales DESC
+
+f)
+
+There is little information in the customer table, if customers are being identified by just their emails, there can be duplicate customers who signed up with multiple emails present.
+Would want to add more identifying information there, for the sake of more insights surrounding customer profiles as well.
+
+Currently promotions are being assumed to run exactly one day, all day long and applied to every order, however this could become very messy if there are different types of promotions going on at the same time and different customers use different promotion codes.
+This could be fixed by adding a promotion_id key to each order in the Invoices table which ties back to the Promotions table, and matching on dates would no longer be the only way of figuring out promotions and this would be more future-proof.
+
+
